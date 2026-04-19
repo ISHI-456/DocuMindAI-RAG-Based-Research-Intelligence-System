@@ -3,37 +3,67 @@
 # pip install langchain langchain-community langchain-groq pypdf pymupdf
 #             sentence-transformers chromadb streamlit python-dotenv
 
+
+
 import os
 import streamlit as st
+import urllib.request
+import tempfile
+import uuid
+
 from langchain_community.document_loaders.pdf import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from sentence_transformers import SentenceTransformer
 import chromadb
-import uuid
 from dotenv import load_dotenv
 from ingest import PAPERS
 from langchain_groq import ChatGroq
 
+# ─────────────────────────────────────────────
+# ENV FIXES (IMPORTANT)
+# ─────────────────────────────────────────────
+os.environ["TRANSFORMERS_NO_TORCH"] = "1"
+os.environ["TRANSFORMERS_NO_TORCHVISION"] = "1"
+os.environ["ANONYMIZED_TELEMETRY"] = "False"
+
+# ─────────────────────────────────────────────
+# STREAMLIT UI CONFIG
+# ─────────────────────────────────────────────
 st.set_page_config(page_title="DocuMind AI", layout="wide")
-st.title("DocuMind AI")
-st.caption("RAG-powered research assistant — ask questions across your uploaded papers")
 
-
-
+st.title("📄 DocuMind AI")
+st.caption("RAG-powered research assistant — ask questions across AI research papers with citations")
+st.markdown("---")
 
 # ─────────────────────────────────────────────
-#  PDF Loading
+# SIDEBAR UI
 # ─────────────────────────────────────────────
-import urllib.request
-import tempfile
+st.sidebar.title("📚 Papers Indexed")
 
+paper_names = [
+    "Attention Is All You Need (2017)",
+    "BERT (2018)",
+    "Dense Passage Retrieval (2020)",
+    "FAISS (2017)",
+    "RAG Survey (2024)",
+    "LLaMA 2 (2023)",
+    "Self-RAG (2023)"
+]
+
+for paper in paper_names:
+    st.sidebar.markdown(f"• {paper}")
+
+st.sidebar.markdown("---")
+st.sidebar.info("💡 Ask questions across multiple papers and get cited answers.")
+
+# ─────────────────────────────────────────────
+# PDF Loading
+# ─────────────────────────────────────────────
 def load_all_pdfs():
     all_docs = []
 
     for url in PAPERS:
-        # extract a clean name from the URL for metadata
         paper_name = url.split("/")[-1]
-        print(f"Downloading {paper_name}...")
 
         with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
             tmp_path = tmp.name
@@ -47,70 +77,48 @@ def load_all_pdfs():
                 doc.metadata["source"] = paper_name
 
             all_docs.extend(docs)
-            print(f"  loaded {len(docs)} pages from {paper_name}")
 
         except Exception as e:
-            print(f"  failed to load {paper_name}: {e}")
+            print(f"Failed to load {paper_name}: {e}")
 
         finally:
             os.remove(tmp_path)
 
-    print(f"Total pages loaded: {len(all_docs)}")
     return all_docs
 
 
 # ─────────────────────────────────────────────
-#  Chunking
+# Chunking
 # ─────────────────────────────────────────────
 def split_docs(documents, chunk_size=500, chunk_overlap=50):
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap
     )
-    chunks = splitter.split_documents(documents)
-    print(f"Split into {len(chunks)} chunks.")
-    return chunks
+    return splitter.split_documents(documents)
 
 
 # ─────────────────────────────────────────────
-#  Embedding Manager
+# Embedding Manager
 # ─────────────────────────────────────────────
 class EmbeddingManager:
     def __init__(self, model_name="all-MiniLM-L6-v2"):
-        self.model_name = model_name
-        print(f"Loading embedding model: {model_name}")
         self.model = SentenceTransformer(model_name)
-        
 
     def generate_embeddings(self, texts):
-        embeddings = self.model.encode(texts, show_progress_bar=True)
-        return embeddings
+        return self.model.encode(texts)
 
 
 # ─────────────────────────────────────────────
-#  Vector Store Manager
+# Vector Store Manager
 # ─────────────────────────────────────────────
 class VectorStoreManager:
-    def __init__(self, persist_directory="data/vector_store", collection_name="pdf_documents"):
-        self.collection_name = collection_name
-        self.persist_directory = persist_directory
-        self.client = None
-        self.collection = None
-        self._initialize_store()
-
-    def _initialize_store(self):
-        os.makedirs(self.persist_directory, exist_ok=True)
-        self.client = chromadb.PersistentClient(path=self.persist_directory)
-        self.collection = self.client.get_or_create_collection(
-            name=self.collection_name,
-            metadata={"description": "RAG vector store for research papers"}
-        )
-        print(f"Vector store ready. Documents in collection: {self.collection.count()}")
+    def __init__(self, persist_directory="data/vector_store"):
+        os.makedirs(persist_directory, exist_ok=True)
+        self.client = chromadb.PersistentClient(path=persist_directory)
+        self.collection = self.client.get_or_create_collection(name="pdf_documents")
 
     def add_documents(self, documents, embeddings):
-        if len(documents) != len(embeddings):
-            raise ValueError("Mismatch between number of documents and embeddings.")
-
         ids = []
         metadatas = []
         contents = []
@@ -118,12 +126,10 @@ class VectorStoreManager:
 
         for i, (doc, embedding) in enumerate(zip(documents, embeddings)):
             ids.append(f"doc_{uuid.uuid4()}")
-
             metadata = dict(doc.metadata)
             metadata["doc_index"] = i
-            metadata["content_length"] = len(doc.page_content)
-            metadatas.append(metadata)
 
+            metadatas.append(metadata)
             contents.append(doc.page_content)
             embeddings_list.append(embedding.tolist())
 
@@ -133,18 +139,17 @@ class VectorStoreManager:
             documents=contents,
             embeddings=embeddings_list
         )
-        
 
 
 # ─────────────────────────────────────────────
-# RAG Retriever
+# Retriever
 # ─────────────────────────────────────────────
 class RAGRetriever:
     def __init__(self, embedding_manager, vector_store):
         self.embedding_manager = embedding_manager
         self.vector_store = vector_store
 
-    def retrieve(self, query, top_k=5, score_threshold=0.3):
+    def retrieve(self, query, top_k=5, threshold=0.3):
         query_embedding = self.embedding_manager.generate_embeddings([query])[0]
 
         results = self.vector_store.collection.query(
@@ -154,114 +159,115 @@ class RAGRetriever:
 
         retrieved_docs = []
 
-        if results["documents"] and results["documents"][0]:
-            for i, (doc_id, metadata, document, distance) in enumerate(zip(
-                results["ids"][0],
-                results["metadatas"][0],
-                results["documents"][0],
-                results["distances"][0]
-            )):
-                similarity_score = 1 - distance
-                if similarity_score >= score_threshold:
-                    retrieved_docs.append({
-                        "id": doc_id,
-                        "document": document,
-                        "metadata": metadata,
-                        "similarity_score": round(similarity_score, 4),
-                        "rank": i + 1
-                    })
+        for doc_id, metadata, document, distance in zip(
+            results["ids"][0],
+            results["metadatas"][0],
+            results["documents"][0],
+            results["distances"][0]
+        ):
+            score = 1 - distance
+            if score >= threshold:
+                retrieved_docs.append({
+                    "document": document,
+                    "metadata": metadata,
+                    "score": round(score, 3)
+                })
 
-        print(f"Retrieved {len(retrieved_docs)} relevant chunks.")
         return retrieved_docs
 
 
+# ─────────────────────────────────────────────
+# Initialize Pipeline
+# ─────────────────────────────────────────────
 @st.cache_resource
 def initialize_pipeline():
     embedding_manager = EmbeddingManager()
     vector_store = VectorStoreManager()
 
-    # Only ingest if the collection is empty — skips re-ingestion on restarts
     if vector_store.collection.count() == 0:
-        print("Collection empty — running ingestion pipeline...")
         docs = load_all_pdfs()
         chunks = split_docs(docs)
-        texts = [chunk.page_content for chunk in chunks]
+        texts = [c.page_content for c in chunks]
         embeddings = embedding_manager.generate_embeddings(texts)
         vector_store.add_documents(chunks, embeddings)
-    else:
-        print("Collection already populated — skipping ingestion.")
 
     return RAGRetriever(embedding_manager, vector_store)
 
 
 # ─────────────────────────────────────────────
-# 7. LLM — cached
+# LLM Setup (FIXED)
 # ─────────────────────────────────────────────
 @st.cache_resource
 def get_llm():
     load_dotenv()
-    api_key = os.getenv("GROQ_API_KEY")
+
+    api_key = os.getenv("GROQ_API_KEY") or st.secrets.get("GROQ_API_KEY")
+
     if not api_key:
-        raise ValueError("GROQ_API_KEY not found. Add it to your .env file.")
+        st.error("❌ GROQ_API_KEY not found. Add it to Streamlit secrets.")
+        st.stop()
+
     return ChatGroq(
         groq_api_key=api_key,
         model="qwen/qwen3-32b",
-        temperature=0.1,
-        max_tokens=1024
+        temperature=0.1
     )
 
 
 # ─────────────────────────────────────────────
-# 8. Answer Generation
+# Answer Generation
 # ─────────────────────────────────────────────
-def generate_answer(query, retriever, llm, top_k=3):
-    results = retriever.retrieve(query, top_k=top_k)
+def generate_answer(query, retriever, llm):
+    docs = retriever.retrieve(query)
 
-    if not results:
-        return "No relevant content found in the documents for this question.", []
+    if not docs:
+        return "No relevant information found.", []
 
-    context = "\n\n".join([doc["document"] for doc in results])
+    context = "\n\n".join([d["document"] for d in docs])
 
-    prompt = f"""You are an AI research assistant. Answer the question using ONLY the provided context.
-If the answer is not present in the context, say "This information is not found in the provided documents."
-Give a clear, concise, and accurate answer.
+    prompt = f"""
+Answer the question using ONLY the context below.
+If not found, say so clearly.
 
 Context:
 {context}
 
 Question:
 {query}
-
-Answer:"""
+"""
 
     response = llm.invoke(prompt)
-    return response.content, results
+    return response.content, docs
 
 
 # ─────────────────────────────────────────────
-# Streamlit UI
+# MAIN APP
 # ─────────────────────────────────────────────
-rag_retriever = initialize_pipeline()
+retriever = initialize_pipeline()
 llm = get_llm()
 
-query = st.text_input("Ask a question about your research papers")
+query = st.text_input("🔍 Ask a question about the research papers")
 
 if st.button("Get Answer"):
     if not query.strip():
         st.warning("Please enter a question.")
     else:
-        with st.spinner("Searching documents and generating answer..."):
-            answer, sources = generate_answer(query, rag_retriever, llm, top_k=3)
+        with st.spinner("Thinking..."):
+            answer, sources = generate_answer(query, retriever, llm)
 
-        st.subheader("Answer")
+        st.subheader("🧠 Answer")
         st.write(answer)
 
         if sources:
-            st.subheader("Sources")
-            for doc in sources:
-                source_file = os.path.basename(doc["metadata"].get("source", "Unknown file"))
-                page = doc["metadata"].get("page", "N/A")
-                score = doc["similarity_score"]
+            st.subheader("📄 Sources")
 
-                with st.expander(f"{source_file} — Page {page} — Relevance: {score}"):
-                    st.caption(doc["document"][:500] + ("..." if len(doc["document"]) > 500 else ""))
+            for doc in sources:
+                src = doc["metadata"].get("source", "Unknown")
+                page = doc["metadata"].get("page", "N/A")
+
+                st.markdown(f"**📘 {src} | Page {page} | Score: {doc['score']}**")
+
+                with st.expander("View Content"):
+                    st.write(doc["document"][:500])
+
+                st.markdown("---")
