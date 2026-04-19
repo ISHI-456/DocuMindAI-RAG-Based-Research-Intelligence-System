@@ -1,26 +1,30 @@
- DocuMind AI — RAG-Based Research Assistant
+ DocuMind AI: RAG-Based Research Intelligence system
 
-DocuMind AI is a Retrieval-Augmented Generation (RAG) system that enables users to query multiple AI research papers and receive accurate, context-grounded answers with citations.
+ <p align="center"> <b>Ask questions across multiple research papers and get accurate, cited answers instantly.</b> </p> <p align="center"> <img src="https://img.shields.io/badge/Framework-LangChain-blue?style=for-the-badge"> <img src="https://img.shields.io/badge/LLM-Groq%20(Qwen%2032B)-orange?style=for-the-badge"> <img src="https://img.shields.io/badge/VectorDB-ChromaDB-green?style=for-the-badge"> <img src="https://img.shields.io/badge/UI-Streamlit-red?style=for-the-badge"> </p>
 
-It combines semantic search + LLM reasoning to act as an intelligent research assistant.
+ ✨ Overview
+DocuMind AI is a Retrieval-Augmented Generation (RAG) system that allows users to interact with multiple AI research papers like a chatbot.
+🔧 A complete RAG pipeline is built from scratch (ingestion → retrieval → vector search)
+🤖 Then Groq LLM is integrated on top for answer generation
+📌 Provides accurate, context-grounded responses with citations
 
- Features
-
-🔍 Query across multiple research papers
-🧠 Semantic search using embeddings
-🤖 Context-aware answers using LLM
-📌 Source citations (paper + page number)
-⚡ Fast responses using pre-built vector index
-🔗 Supports cross-paper reasoning
+🔥 Features
+📚 Multi-paper question answering
+🔎 Semantic search using embeddings
+🧠 Full RAG pipeline implementation
+🤖 LLM-powered responses (Groq - Qwen 32B)
+📌 Source citation (paper + page number)
+⚡ Fast retrieval using pre-built vector database
+🔗 Cross-paper reasoning
 
 📄 Papers Indexed
-Attention Is All You Need (Vaswani et al., 2017)
-BERT (Devlin et al., 2018)
-Dense Passage Retrieval (Karpukhin et al., 2020)
-FAISS (Johnson et al., 2017)
-RAG Survey (Gao et al., 2024)
-LLaMA 2 (Touvron et al., 2023)
-Self-RAG (Asai et al., 2023)
+Attention Is All You Need (2017)
+BERT (2018)
+Dense Passage Retrieval (2020)
+FAISS (2017)
+RAG Survey (2024)
+LLaMA 2 (2023)
+Self-RAG (2023)
 
 🛠️ Tech Stack
 Component	Technology
@@ -32,71 +36,79 @@ UI	Streamlit
 PDF Parsing	PyPDFLoader
 
 🏗️ Architecture
-ingest.py          →   app.py
-─────────────────      ──────────────────
-Download PDFs          Load vector store
-Chunk text             Embed user query
-Generate embeddings    Search ChromaDB
-Store in ChromaDB      Send to Groq LLM
-                       Display answer + sources
-                       
+RAG Pipeline (Built First)
+────────────────────────────────────
+PDF Download → Chunking → Embeddings → ChromaDB
+
+Query Pipeline (LLM Integration)
+────────────────────────────────────
+User Query → Embed → Retrieve → Groq LLM → Answer + Citations
+
 ⚙️ Setup Instructions
-1. Clone the Repository
+1. Clone Repository
 git clone https://github.com/yourusername/documind-ai
 cd documind-ai
 2. Create Virtual Environment
 python -m venv venv
-venv\Scripts\activate        # Windows
-source venv/bin/activate     # Mac/Linux
+
+# Windows
+venv\Scripts\activate  
+
+# Mac/Linux
+source venv/bin/activate
+
 3. Install Dependencies
 pip install -r requirements.txt
-
-4. Add Groq API Key
+4. Add API Key
 
 Create a .env file:
 
 GROQ_API_KEY=your_key_here
 
-Get your key: https://console.groq.com
-
-5. Run Ingestion (One-Time Step)
+5. Run Ingestion (One-Time)
 python ingest.py
-
-This step:
-
 Downloads research papers
-Splits text into chunks (500 tokens, 50 overlap)
+Splits into chunks (500 tokens, 50 overlap)
 Generates embeddings
-Stores them in ChromaDB
+Stores data in ChromaDB
 
-⏱️ Takes ~3–5 minutes
-
-6. Run the Application
+6. Run the App
 streamlit run app.py
 
 📂 Project Structure
 DocuMind-AI/
-│
-├── app.py              # Streamlit UI + query pipeline
-├── ingest.py           # PDF ingestion + embedding pipeline
+├── app.py
+├── ingest.py
 ├── requirements.txt
-├── .env                # API keys (not committed)
+├── .env
 ├── .gitignore
-│
-├── data/               # Downloaded PDFs
-└── vector_store/       # ChromaDB index
+├── data/
+└── vector_store/
 
 ⚡ How It Works
-1. Ingestion
+1. RAG Pipeline (Built First)
 Downloads PDFs from ArXiv
-Splits into chunks (500 tokens, 50 overlap)
+Splits text into chunks (500 tokens, 50 overlap)
 Generates embeddings using sentence-transformers
 Stores embeddings in ChromaDB
 2. Retrieval
-User query → embedding
-ChromaDB performs cosine similarity search
-Filters results using score threshold (0.3)
-3. Generation
-Retrieved chunks passed to Groq LLM
-Uses a strict prompt to ensure grounded answers
-Returns answer with source citations
+Converts user query into embedding
+Performs cosine similarity search
+Filters results using threshold (0.3)
+3. LLM Integration
+Retrieved context is passed to Groq LLM
+Generates grounded answers
+Displays citations (paper + page number)
+   
+
+
+
+
+
+
+
+
+
+
+
+
