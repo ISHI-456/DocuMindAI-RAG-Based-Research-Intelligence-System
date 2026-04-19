@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🚀 DocuMind AI
+#  DocuMind AI
 
 ### 🧠 RAG-Based Research Intelligence System
 
