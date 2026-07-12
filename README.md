@@ -16,7 +16,11 @@
   <img src="https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge" />
 </p>
 
+🔗 *Live Demo:* https://i4jnnvzkvjvknytm9wmpyv.streamlit.app/
+
 </div>
+
+
 
 ---
 
